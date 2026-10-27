@@ -28,6 +28,14 @@ if [ ! -L /tmp/F3CNN ]; then rm -rf /tmp/F3CNN; ln -s "$ROOT/state/F3CNN" /tmp/F
 
 cd "$BIN_DIR"
 args=(-lang=en -api_ip=127.0.0.1 -api_port=11111 -log_level=info -no_monitor=1 -console=1 -log_path="$ROOT/logs")
+# 1) Automatic login: MOOMOO_LOGIN_ACCOUNT + MOOMOO_LOGIN_PWD_MD5 from the Secret
+#    (set with scripts/set-moomoo-login.sh). If moomoo asks for an SMS code, run
+#    scripts/opend-login.sh and type: input_phone_verify_code -code=123456
+if [ -n "${MOOMOO_LOGIN_ACCOUNT:-}" ] && [ -n "${MOOMOO_LOGIN_PWD_MD5:-}" ]; then
+  echo "Logging in automatically as the account in claude-secrets."
+  exec ./OpenD "${args[@]}" -login_account="$MOOMOO_LOGIN_ACCOUNT" -login_pwd_md5="$MOOMOO_LOGIN_PWD_MD5"
+fi
+
 # Reuse the remembered login: MOOMOO_LOGIN_ACCOUNT if set, else the account name you logged in
 # with (email or phone before the numeric moomoo ID) from the login cache. If a remembered login
 # failed and nobody has logged in since, start the normal interactive login instead of looping.

@@ -39,6 +39,8 @@ spec:
             - {name: OPEND_VERSION, value: "10.11.7108"}
             - name: MOOMOO_LOGIN_ACCOUNT
               valueFrom: {secretKeyRef: {name: claude-secrets, key: MOOMOO_LOGIN_ACCOUNT, optional: true}}
+            - name: MOOMOO_LOGIN_PWD_MD5
+              valueFrom: {secretKeyRef: {name: claude-secrets, key: MOOMOO_LOGIN_PWD_MD5, optional: true}}
           volumeMounts:
             - {name: opend, mountPath: /opend}
           # No readiness probe: OpenD listens on 127.0.0.1 only, and the dashboard must stay
