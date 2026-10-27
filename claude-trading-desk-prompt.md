@@ -1,10 +1,10 @@
-# Prompt for Claude Code: Hermes US tech swing-trading desk (moomoo, on Kubernetes)
+# Prompt for Claude Code: Claude Trading Desk (US tech swing trading on moomoo, on Kubernetes)
 
 Copy everything below the line into Claude Code.
 
 ---
 
-You are building an autonomous US stock swing-trading system called Hermes. It trades through my moomoo account using the moomoo OpenAPI via OpenD, and runs as a container on my Kubernetes cluster `dark-ai`. Build all the code, the container images and the Kubernetes manifests yourself. Do not ask me for code.
+You are building an autonomous US stock swing-trading system called Claude Trading Desk. It trades through my moomoo account using the moomoo OpenAPI via OpenD, and runs as a container on my Kubernetes cluster `dark-ai`. Build all the code, the container images and the Kubernetes manifests yourself. Do not ask me for code.
 
 Never put passwords, trade-unlock PINs or API keys in code, images, logs or chat. Read them only from environment variables, which come from a Kubernetes Secret.
 
@@ -97,15 +97,30 @@ Build a backtester that runs the Scout (technical rules only), Filter (dollar vo
 
 The report shows: number of trades, win rate, average win and loss, profit factor after fees, max drawdown, average holding days, and total fees. Also give the same numbers with the regime rule off and with the partial-profit rule off, so I can see what each one adds.
 
-## 6. Live terminal
+## 6. Web dashboard
 
-Build a terminal dashboard (Python `rich` or `textual`) that I open with `kubectl exec`. It shows:
-- LIVE or SHADOW mode, in large text, and whether the kill switch or a limit is active
-- market regime (normal or weak)
-- system equity, cash, day P&L and total P&L
-- open positions with entry, current price, P&L, R multiple and stop level
-- an equity curve
-- a scrolling feed of agent activity, rejections included
+Build a web dashboard that I open in a browser, on desktop or phone.
+
+- Stack: Python FastAPI backend. Keep the frontend simple: server-rendered pages with htmx, or a small single-page app. Use Chart.js for charts. Pin every library version and serve all assets from the container, with no external CDN.
+- Updates live: push new data with Server-Sent Events, or poll every 10 seconds.
+- Works on phone width and supports a dark theme.
+- Login required: one user, password from `DASHBOARD_PASSWORD` in the Secret, stored hashed in memory, session cookie that is secure, HTTP-only and expires after 12 hours. Rate-limit failed logins.
+- Pages:
+  - **Overview**:
+    - LIVE or SHADOW mode as a large badge
+    - whether the kill switch, daily loss limit or drawdown halt is active
+    - market regime (normal or weak)
+    - system equity, cash, invested %, day P&L and total P&L
+    - equity curve with the drawdown underneath
+    - US market status and the time of the next scan
+  - **Positions**: entry, current price, P&L, R multiple, stop level, days held, whether the partial profit has been taken, and the full reason chain for each position.
+  - **Trades**: closed-trade history from `logs/trades.csv` with filters and CSV download. Running stats: win rate, average win and loss, profit factor after fees, and total fees.
+  - **Funnel**: for each scan and per day, how many symbols passed each stage, the top rejection rules, and near-misses that failed only one rule.
+  - **Activity**: a live feed of agent decisions, rejections, orders, fills and errors, filterable by agent and symbol.
+  - **Backtest**: the latest backtest report, including the regime-off and partial-profit-off comparisons.
+  - **Config**: read-only view of `config.yaml` and `LIVE_TRADING`.
+- The dashboard is read-only, with one exception: a **Halt** button that turns on the kill switch, with a confirmation step. The dashboard has no resume, go-live, order or config-change controls. Those stay in the scripts.
+- The dashboard never talks to OpenD or moomoo directly. It reads state the bot publishes: the bot writes `data/state.json` every minute and serves a small internal API on 127.0.0.1:9000 inside the pod. The Halt button calls that internal API, which creates the `STOP` file and logs who pressed it and when.
 
 ## 7. Daily recap and weekly tuning report
 
@@ -122,24 +137,29 @@ Every Friday, add a tuning section: the week's funnel totals, which rule rejecte
 
 ## 8. Kubernetes deployment (cluster `dark-ai`)
 
-- Use my kubeconfig context for `dark-ai`. Create and use the namespace `hermes-trading`. Do not touch anything outside that namespace.
+- Use my kubeconfig context for `dark-ai`. Create and use the namespace `claude-trading`. Do not touch anything outside that namespace.
 - Before writing manifests, check the cluster for the default StorageClass, node architecture and any existing image registry, and tell me what you found. Ask me which registry to push to if it is not obvious.
 - Images:
-  - `hermes-bot`: Python app, non-root user, pinned dependencies.
-  - `hermes-opend`: moomoo OpenD for Linux, built from the official moomoo download. Pin the OpenD version. Build for `linux/amd64` and schedule on amd64 nodes.
-- One Deployment `hermes` with `replicas: 1` and `strategy: Recreate`. Never allow two copies to run at once, because that could double orders.
+  - `claude-bot`: Python app, non-root user, pinned dependencies.
+  - `claude-opend`: moomoo OpenD for Linux, built from the official moomoo download. Pin the OpenD version. Build for `linux/amd64` and schedule on amd64 nodes.
+  - `claude-dashboard`: the web dashboard, non-root user, pinned dependencies.
+- One Deployment `claude-trader` with `replicas: 1` and `strategy: Recreate`. Never allow two copies to run at once, because that could double orders.
   - Container `opend` (sidecar): listens only on 127.0.0.1 inside the pod. Its login config comes from the Secret. Its state directory is on a PersistentVolumeClaim so the login survives restarts.
-  - Container `bot`: connects to OpenD at 127.0.0.1:11111. Waits until OpenD is logged in before starting the agents.
-- PersistentVolumeClaims: `hermes-data` (mounted at `/app/data` and `/app/logs`) and `hermes-opend` (OpenD state).
-- Secret `hermes-secrets`: moomoo login ID, password, trade-unlock PIN, `ANTHROPIC_API_KEY`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`. Write a script that creates it from my local environment, never from a file in the repo.
-- ConfigMap `hermes-config`: `config.yaml` with every threshold, plus `LIVE_TRADING` (default `"false"`).
-- No Service, Ingress or NodePort. Add a NetworkPolicy that denies all ingress. Allow all egress, because OpenD connects to moomoo servers on ports that are not documented as fixed.
+  - Container `bot`: connects to OpenD at 127.0.0.1:11111. Waits until OpenD is logged in before starting the agents. Serves its internal API on 127.0.0.1:9000 only.
+  - Container `dashboard`: listens on port 8080. Mounts the data volume read-only. Talks to the bot only through 127.0.0.1:9000.
+- PersistentVolumeClaims: `claude-data` (mounted at `/app/data` and `/app/logs`) and `claude-opend` (OpenD state).
+- Secret `claude-secrets`: moomoo login ID, password, trade-unlock PIN, `ANTHROPIC_API_KEY`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `DASHBOARD_PASSWORD`. Write a script that creates it from my local environment, never from a file in the repo.
+- ConfigMap `claude-config`: `config.yaml` with every threshold, plus `LIVE_TRADING` (default `"false"`).
+- Dashboard access:
+  - Service `claude-dashboard`, type ClusterIP, port 80 to the dashboard's 8080. No NodePort or LoadBalancer.
+  - Check which ingress controller and cert-manager setup `dark-ai` has and tell me. If I give you a hostname, add an Ingress for it with TLS. Until then, I use `kubectl port-forward`.
+- NetworkPolicy: deny all ingress except to port 8080, and only from the ingress controller's namespace (port-forward still works). Allow all egress, because OpenD connects to moomoo servers on ports that are not documented as fixed.
 - Probes: the bot writes a heartbeat file every minute; the liveness probe fails if it is older than 5 minutes. Readiness waits for the OpenD login.
 - Set CPU and memory requests and limits.
 - OpenD may ask for a one-time SMS verification code on first login. Give me the exact `kubectl exec` command to enter it.
 - Put these in `scripts/` and in the README:
   - `deploy.sh`: build, push and apply
-  - `dashboard.sh`: `kubectl exec -it` into the dashboard
+  - `dashboard.sh`: `kubectl port-forward` the dashboard Service to `http://localhost:8080`
   - `halt.sh` and `resume.sh`: create or remove the `STOP` file
   - `logs.sh`: follow the bot logs
   - `go-live.sh`: set `LIVE_TRADING=true` in the ConfigMap and restart the pod (only after I say "go live")
