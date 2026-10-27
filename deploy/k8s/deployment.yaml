@@ -31,8 +31,10 @@ spec:
       containers:
         - name: opend
           image: docker.io/darkwunan/claude-opend-runtime:__TAG__
+          # stdin without a TTY: Ctrl-C or closing the login terminal only ends kubectl,
+          # never OpenD, and typed input is not echoed into the container log.
           stdin: true
-          tty: true
+          tty: false
           env:
             - {name: OPEND_VERSION, value: "10.11.7108"}
             - name: MOOMOO_LOGIN_ACCOUNT
