@@ -49,7 +49,10 @@ def test_risk_sizing_whole_shares(tmp_path):
     assert [o.symbol for o in orders] == ["US.AAA"]
     assert orders[0].qty == 3 and orders[0].qty * orders[0].limit <= 200
     weak = risk.size([cheap], pf, {}, "weak")
-    assert weak[0].qty == 1  # 10% of 1000 = 100 -> 1 share at ~50
+    expected = int(1000 * CFG["risk"]["weak_position_pct"] / 100 // weak[0].limit)
+    assert weak[0].qty == expected  # weak regime keeps its own position size
+    pct, slots = risk.limits("weak")
+    assert slots == CFG["risk"]["weak_max_positions"]
 
 
 def test_risk_monitor_stop_partial_time(tmp_path):

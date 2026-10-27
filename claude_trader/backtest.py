@@ -217,28 +217,36 @@ def simulate(data: dict[str, pd.DataFrame], bench: pd.DataFrame, cfg: dict, regi
         "avg_loss": round(sum(losses) / len(losses), 2) if losses else None,
         "avg_r": round(sum(t["r"] for t in trades) / len(trades), 2) if trades else None,
         "profit_factor": round(sum(wins) / -sum(losses), 2) if losses and sum(losses) < 0 else None,
-        "max_drawdown_pct": round(max_dd, 1),
+        "max_drawdown_pct": round(float(max_dd), 1),
         "avg_holding_days": round(sum(t["days"] for t in trades) / len(trades), 1) if trades else None,
         "total_fees": round(sum(t["fees"] for t in trades), 2),
-        "final_equity": round(final, 2),
+        "final_equity": round(float(final), 2),
         "cagr_pct": round(((final / start_cap) ** (1 / yrs) - 1) * 100, 1) if final > 0 else None,
-        "exit_reasons": pd.Series([t["reason"] for t in trades]).value_counts().to_dict() if trades else {},
+        "exit_reasons": {k: int(v) for k, v in pd.Series([t["reason"] for t in trades]).value_counts().items()} if trades else {},
         "equity_curve": curve,
         "recent_trades": trades[-50:],
     }
 
 
 def gate(base: dict) -> dict:
+    # Plain Python bools: numpy bools would be saved as the strings "True"/"False".
     return {
-        "profit_factor_ge_1_3": bool(base["profit_factor"] and base["profit_factor"] >= 1.3),
-        "at_least_100_trades": base["trades"] >= 100,
-        "max_drawdown_lt_20": base["max_drawdown_pct"] < 20,
+        "profit_factor_ge_1_3": bool(base["profit_factor"] is not None and float(base["profit_factor"]) >= 1.3),
+        "at_least_100_trades": bool(int(base["trades"]) >= 100),
+        "max_drawdown_lt_20": bool(float(base["max_drawdown_pct"]) < 20),
     }
 
 
 def main() -> None:
+    import argparse
+
+    ap = argparse.ArgumentParser(description="Backtest the technical rules")
+    ap.add_argument("--years", type=float, default=None, help="test period in years, e.g. 0.25 for 3 months")
+    args = ap.parse_args()
     logging.basicConfig(level=logging.INFO, stream=sys.stdout, format="%(asctime)s %(levelname)s %(message)s")
     s = load_settings()
+    if args.years:
+        s.cfg["backtest"]["years"] = args.years
     from .util import read_json
     universe = (read_json(s.data_dir / "universe.json", {}) or {}).get("symbols") or []
     q = Quotes(s.opend_host, s.opend_port)
@@ -249,7 +257,8 @@ def main() -> None:
             universe = MarketData(s, q, Journal(s.logs_dir, "BACKTEST")).build_universe()
         bench_code = s["universe"]["benchmark"]
         log.info("loading bars for %d symbols", len(universe) + 1)
-        bars = load_bars(q, universe + [bench_code], s["backtest"]["years"], s.data_dir / "bt_bars")
+        # Always load 3+ years so short tests reuse the same cached bars and have warm-up history.
+        bars = load_bars(q, universe + [bench_code], max(3, s["backtest"]["years"]), s.data_dir / "bt_bars")
     finally:
         q.close()
     bench = bars.pop(bench_code)

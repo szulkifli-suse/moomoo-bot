@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 NS=claude-trading
 CTX=${KUBE_CONTEXT:-dark-ai}
-TAG=${TAG:-0.1.4}
+TAG=${TAG:-0.1.5}
 REGISTRY=${REGISTRY:-docker.io/darkwunan}
 k() { kubectl --context "$CTX" "$@"; }
 kn() { kubectl --context "$CTX" -n "$NS" "$@"; }

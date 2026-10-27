@@ -62,7 +62,7 @@ analyst:
 
 risk:
   position_pct: 20
-  weak_position_pct: 10
+  weak_position_pct: 20        # same size as normal; a weak market only cuts the number of positions (10% made fees block every trade)
   max_positions: 4
   weak_max_positions: 2
   max_invested_pct: 80
