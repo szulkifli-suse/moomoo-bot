@@ -56,6 +56,8 @@ spec:
             - {name: DATA_DIR, value: /app/data}
             - {name: LOGS_DIR, value: /app/logs}
             - {name: HOME, value: /tmp/home}
+            - name: CLAUDE_CODE_OAUTH_TOKEN
+              valueFrom: {secretKeyRef: {name: claude-secrets, key: CLAUDE_CODE_OAUTH_TOKEN, optional: true}}
             - name: ANTHROPIC_API_KEY
               valueFrom: {secretKeyRef: {name: claude-secrets, key: ANTHROPIC_API_KEY, optional: true}}
             - name: MOOMOO_TRADE_PIN

@@ -6,7 +6,10 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
+import subprocess
+from pathlib import Path
 
 import anthropic
 
@@ -69,6 +72,17 @@ class Analyst:
             self._client = anthropic.Anthropic(max_retries=2, timeout=300)
         return self._client
 
+    def backend(self) -> str:
+        """claude_code = your Claude subscription via the Claude Code CLI; api = pay-per-use API key."""
+        choice = self.cfg.get("backend", "auto")
+        if choice != "auto":
+            return choice
+        if os.environ.get("CLAUDE_CODE_OAUTH_TOKEN"):
+            return "claude_code"
+        if os.environ.get("ANTHROPIC_API_KEY"):
+            return "api"
+        raise RuntimeError("no Claude credentials: set CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_API_KEY")
+
     def review(self, c: Candidate) -> dict:
         user = (
             f"Ticker: {c.symbol.removeprefix('US.')}\n"
@@ -77,6 +91,51 @@ class Analyst:
             f"20-day average dollar volume: ${c.stats['avg_dollar_volume20']/1e6:.0f}M\n"
             "Check the last 30 days of news, analyst rating changes and insider trades, then decide."
         )
+        if self.backend() == "claude_code":
+            return self._review_claude_code(user)
+        return self._review_api(user)
+
+    def _review_claude_code(self, user: str) -> dict:
+        """Headless Claude Code on the subscription token. Only the WebSearch tool is available."""
+        env = {k: v for k, v in os.environ.items() if k != "ANTHROPIC_API_KEY"}  # never fall back to paid API
+        env["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] = "1"
+        workdir = Path(env.get("HOME", "/tmp")) / "analyst-work"
+        workdir.mkdir(parents=True, exist_ok=True)
+        cmd = [
+            "claude", "-p", user,
+            "--output-format", "json",
+            "--model", self.cfg["model"],
+            "--system-prompt", SYSTEM,
+            "--tools", "WebSearch",
+            "--allowedTools", "WebSearch",
+            "--permission-mode", "dontAsk",
+            "--no-session-persistence",
+            "--strict-mcp-config",
+        ]
+        try:
+            proc = subprocess.run(cmd, cwd=workdir, env=env, capture_output=True, text=True,
+                                  timeout=self.cfg.get("cli_timeout_seconds", 600))
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError("claude code timed out") from exc
+        try:
+            out = json.loads(proc.stdout)
+        except json.JSONDecodeError as exc:
+            raise RuntimeError(f"claude code exit {proc.returncode}: {(proc.stderr or proc.stdout)[:300]}") from exc
+        if out.get("is_error") or out.get("subtype") != "success":
+            raise RuntimeError(f"claude code error: {str(out.get('result') or out.get('subtype'))[:300]}")
+        data = _parse(out.get("result") or "")
+        if not data:
+            raise RuntimeError("analyst returned no JSON verdict")
+        usage = out.get("usage") or {}
+        data["usage"] = {
+            "backend": "claude_code",
+            "input_tokens": usage.get("input_tokens"),
+            "output_tokens": usage.get("output_tokens"),
+            "turns": out.get("num_turns"),
+        }
+        return data
+
+    def _review_api(self, user: str) -> dict:
         messages: list = [{"role": "user", "content": user}]
         resp = None
         for _ in range(4):  # resume server-tool pauses a few times at most
@@ -103,6 +162,7 @@ class Analyst:
             raise RuntimeError("analyst returned no JSON verdict")
         usage = resp.usage
         data["usage"] = {
+            "backend": "api",
             "input_tokens": usage.input_tokens,
             "output_tokens": usage.output_tokens,
             "request_id": getattr(resp, "_request_id", None),
