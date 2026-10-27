@@ -97,7 +97,7 @@ fees:
 schedule:
   # US Eastern times; the bot also checks moomoo's market state and trading days.
   premarket_job_et: "08:30"
-  scan_minutes_after_open: [60, 120, 180, 240, 300]   # hourly: 10:30, 11:30, 12:30, 13:30, 14:30 ET
+  scan_minutes_after_open: [60, 120, 180, 240, 300, 360]   # hourly: 10:30 to 15:30 ET
   scan_minutes_before_close: []
   no_scan_first_minutes: 30
   after_close_job_et: "16:15"
