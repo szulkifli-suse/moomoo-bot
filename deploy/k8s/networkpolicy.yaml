@@ -1,0 +1,19 @@
+# Only Traefik may reach the pod, and only on the dashboard port. Egress stays open because
+# OpenD talks to moomoo servers on ports that are not documented as fixed.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: claude-trader-ingress
+  namespace: claude-trading
+spec:
+  podSelector:
+    matchLabels: {app: claude-trader}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: kube-system}
+          podSelector:
+            matchLabels: {app.kubernetes.io/name: rke2-traefik}
+      ports:
+        - {protocol: TCP, port: 8080}

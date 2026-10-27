@@ -1,0 +1,127 @@
+# One pod, three containers. replicas: 1 + Recreate so two copies never run at once.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: claude-trader
+  namespace: claude-trading
+  labels: {app: claude-trader}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels: {app: claude-trader}
+  template:
+    metadata:
+      labels: {app: claude-trader}
+      annotations:
+        checksum/config: "__CONFIG_SHA__"
+    spec:
+      automountServiceAccountToken: false
+      nodeSelector:
+        kubernetes.io/arch: amd64
+      imagePullSecrets:
+        - name: registry-push
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: opend
+          image: docker.io/darkwunan/claude-opend-runtime:__TAG__
+          stdin: true
+          tty: true
+          env:
+            - {name: OPEND_VERSION, value: "10.11.7108"}
+            - name: MOOMOO_LOGIN_ACCOUNT
+              valueFrom: {secretKeyRef: {name: claude-secrets, key: MOOMOO_LOGIN_ACCOUNT, optional: true}}
+          volumeMounts:
+            - {name: opend, mountPath: /opend}
+          # No readiness probe: OpenD listens on 127.0.0.1 only, and the dashboard must stay
+          # reachable while OpenD is logged out. The bot waits for the login itself.
+          resources:
+            requests: {cpu: 100m, memory: 256Mi}
+            limits: {memory: 1Gi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}
+        - name: bot
+          image: docker.io/darkwunan/claude-bot:__TAG__
+          env:
+            - name: LIVE_TRADING
+              valueFrom: {configMapKeyRef: {name: claude-config, key: LIVE_TRADING}}
+            - {name: CONFIG_PATH, value: /app/config/config.yaml}
+            - {name: DATA_DIR, value: /app/data}
+            - {name: LOGS_DIR, value: /app/logs}
+            - {name: HOME, value: /tmp/home}
+            - name: ANTHROPIC_API_KEY
+              valueFrom: {secretKeyRef: {name: claude-secrets, key: ANTHROPIC_API_KEY, optional: true}}
+            - name: MOOMOO_TRADE_PIN
+              valueFrom: {secretKeyRef: {name: claude-secrets, key: MOOMOO_TRADE_PIN, optional: true}}
+            - name: TELEGRAM_BOT_TOKEN
+              valueFrom: {secretKeyRef: {name: claude-secrets, key: TELEGRAM_BOT_TOKEN, optional: true}}
+            - name: TELEGRAM_CHAT_ID
+              valueFrom: {secretKeyRef: {name: claude-secrets, key: TELEGRAM_CHAT_ID, optional: true}}
+          volumeMounts:
+            - {name: data, mountPath: /app/data, subPath: data}
+            - {name: data, mountPath: /app/logs, subPath: logs}
+            - {name: config, mountPath: /app/config, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+          livenessProbe:
+            exec:
+              command: ["python", "-c", "import os,time,sys; sys.exit(0 if time.time()-os.path.getmtime('/app/data/heartbeat')<600 else 1)"]
+            initialDelaySeconds: 180
+            periodSeconds: 60
+            failureThreshold: 3
+          resources:
+            requests: {cpu: 100m, memory: 256Mi}
+            limits: {memory: 1Gi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+        - name: dashboard
+          image: docker.io/darkwunan/claude-dashboard:__TAG__
+          ports:
+            - {name: http, containerPort: 8080}
+          env:
+            - {name: DATA_DIR, value: /app/data}
+            - {name: LOGS_DIR, value: /app/logs}
+            - {name: CONFIG_PATH, value: /app/config/config.yaml}
+            - {name: BOT_API, value: "http://127.0.0.1:9000"}
+            - {name: COOKIE_SECURE, value: "true"}
+            - name: LIVE_TRADING
+              valueFrom: {configMapKeyRef: {name: claude-config, key: LIVE_TRADING}}
+            - name: DASHBOARD_PASSWORD
+              valueFrom: {secretKeyRef: {name: claude-secrets, key: DASHBOARD_PASSWORD, optional: true}}
+          volumeMounts:
+            - {name: data, mountPath: /app/data, subPath: data, readOnly: true}
+            - {name: data, mountPath: /app/logs, subPath: logs, readOnly: true}
+            - {name: config, mountPath: /app/config, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+          readinessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 30
+          resources:
+            requests: {cpu: 50m, memory: 96Mi}
+            limits: {memory: 256Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+      volumes:
+        - name: data
+          persistentVolumeClaim: {claimName: claude-data}
+        - name: opend
+          persistentVolumeClaim: {claimName: claude-opend}
+        - name: config
+          configMap:
+            name: claude-config
+            items: [{key: config.yaml, path: config.yaml}]
+        - name: tmp
+          emptyDir: {}

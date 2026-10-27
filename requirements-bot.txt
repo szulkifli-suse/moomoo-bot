@@ -1,0 +1,7 @@
+moomoo-api==10.11.7108
+anthropic==2.3.0
+fastapi==0.162.0
+uvicorn==0.54.0
+PyYAML==6.0.3
+pandas==3.1.0
+httpx==0.28.1

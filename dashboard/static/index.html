@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Claude Trading Desk</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <section id="login" class="login hidden">
+    <form id="login-form" class="card">
+      <h1>Claude Trading Desk</h1>
+      <label for="pw">Password</label>
+      <input id="pw" type="password" autocomplete="current-password" required>
+      <button type="submit">Sign in</button>
+      <p id="login-error" class="error" role="alert"></p>
+    </form>
+  </section>
+
+  <div id="app" class="hidden">
+    <header class="top">
+      <div class="brand">Claude Trading Desk</div>
+      <span id="mode-badge" class="badge">…</span>
+      <span id="alerts" class="alerts"></span>
+      <div class="spacer"></div>
+      <button id="halt-btn" class="danger">Halt</button>
+      <button id="logout-btn" class="ghost">Sign out</button>
+    </header>
+    <nav class="tabs" role="tablist">
+      <button data-tab="overview" class="active">Overview</button>
+      <button data-tab="positions">Positions</button>
+      <button data-tab="trades">Trades</button>
+      <button data-tab="funnel">Funnel</button>
+      <button data-tab="activity">Activity</button>
+      <button data-tab="backtest">Backtest</button>
+      <button data-tab="config">Config</button>
+    </nav>
+    <main>
+      <section id="tab-overview" class="tab">
+        <div id="status-line" class="muted"></div>
+        <div id="kpis" class="kpis"></div>
+        <div class="card">
+          <h2>Equity</h2>
+          <div id="equity-chart" class="chart"></div>
+          <h3>Drawdown</h3>
+          <div id="dd-chart" class="chart small"></div>
+        </div>
+      </section>
+      <section id="tab-positions" class="tab hidden">
+        <div class="card"><h2>Open positions</h2><div id="positions"></div></div>
+        <div class="card"><h2>Pending buy orders</h2><div id="pending"></div></div>
+      </section>
+      <section id="tab-trades" class="tab hidden">
+        <div id="trade-stats" class="kpis"></div>
+        <div class="card">
+          <div class="row"><h2>Closed trades</h2><div class="spacer"></div>
+            <input id="trade-filter" placeholder="Filter symbol or reason">
+            <a href="/api/trades.csv" class="button ghost" download>Download CSV</a></div>
+          <div id="trades"></div>
+        </div>
+      </section>
+      <section id="tab-funnel" class="tab hidden">
+        <div class="card"><h2>Today</h2><div id="funnel-today"></div></div>
+        <div class="card"><h2>Top rejection rules today</h2><div id="rejections"></div></div>
+        <div class="card"><h2>Near-misses (failed one rule)</h2><div id="near"></div></div>
+        <div class="card"><h2>Scans, last 7 days</h2><div id="scans"></div></div>
+      </section>
+      <section id="tab-activity" class="tab hidden">
+        <div class="card">
+          <div class="row">
+            <select id="act-agent">
+              <option value="">All agents</option>
+              <option>scout</option><option>filter</option><option>analyst</option>
+              <option>risk</option><option>executor</option><option>desk</option>
+              <option>market</option><option>universe</option><option>notifier</option><option>dashboard</option>
+            </select>
+            <input id="act-symbol" placeholder="Symbol">
+            <label class="check"><input id="act-errors" type="checkbox"> Errors only</label>
+          </div>
+          <div id="activity" class="feed"></div>
+        </div>
+      </section>
+      <section id="tab-backtest" class="tab hidden">
+        <div id="bt-summary"></div>
+        <div class="card"><h2>Base equity curve</h2><div id="bt-chart" class="chart"></div></div>
+        <div class="card"><h2>Notes</h2><ul id="bt-notes"></ul></div>
+      </section>
+      <section id="tab-config" class="tab hidden">
+        <div class="card"><h2>Live trading flag</h2><p id="cfg-live"></p>
+          <p class="muted">Read-only. Change config.yaml or LIVE_TRADING through the scripts.</p></div>
+        <div class="card"><h2>config.yaml</h2><pre id="cfg-yaml"></pre></div>
+      </section>
+    </main>
+  </div>
+
+  <dialog id="halt-dialog">
+    <form method="dialog" class="card">
+      <h2>Halt the bot?</h2>
+      <p>This turns on the kill switch: no new positions, open buy orders cancelled. Existing stops keep running.
+        Resuming needs the resume script.</p>
+      <div class="row"><div class="spacer"></div>
+        <button value="cancel" class="ghost">Cancel</button>
+        <button value="confirm" class="danger">Halt now</button></div>
+    </form>
+  </dialog>
+</body>
+</html>

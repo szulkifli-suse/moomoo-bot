@@ -17,3 +17,22 @@ Build prompt for a six-agent US tech swing-trading bot (Claude Trading Desk) tha
 - Tuning: daily funnel and near-miss report, weekly tuning suggestions; thresholds live in `config.yaml` and only change by hand
 
 This trades real money. It can lose money. Use at your own risk.
+
+## Running it (dark-ai)
+
+The app is in `claude_trader/` (bot), `dashboard/` (web dashboard), `deploy/k8s/` (manifests) and `scripts/`.
+It runs in namespace `claude-trading`, dashboard at https://darkloner.lepak-awan.com, starting in shadow mode.
+
+```bash
+export KUBECONFIG=~/sa_lab/harvester-cloud/projects/aws/dark-ai-kubectl.yaml
+scripts/build.sh            # build and push images with BuildKit on the cluster
+scripts/deploy.sh           # apply manifests; keeps the current LIVE_TRADING value
+scripts/create-secret.sh    # ANTHROPIC_API_KEY etc. from your shell; prints the dashboard password
+scripts/opend-login.sh      # one-time moomoo login in the OpenD console (detach: Ctrl-P Ctrl-Q)
+scripts/backtest.sh         # 3-year backtest; results on the dashboard
+scripts/halt.sh / resume.sh # kill switch
+scripts/go-live.sh          # real orders; only after the shadow run and go-live gate
+```
+
+Settings live in `config/config.yaml` (ConfigMap `claude-config`). Fees follow moomoo Malaysia's
+US-stock schedule; the round-trip fee cap is 1.5% because USD 1,000 positions cost about 1.35%.
