@@ -43,16 +43,24 @@ class MarketData:
     # ---------- universe
     def build_universe(self) -> list[str]:
         ucfg = self.s["universe"]
+        # moomoo allows 10 sector-list requests per 30 seconds: fetch the index first, then pace the plates.
+        index_members: set[str] = set()
+        index_error = None
+        try:
+            index_members = set(self.q.plate_stock(ucfg["index"]))
+        except BrokerError as exc:
+            index_error = exc
         plate_members: set[str] = set()
         for plate in ucfg["plates"]:
+            time.sleep(3.2)
             try:
                 plate_members.update(self.q.plate_stock(plate))
             except BrokerError as exc:
                 self.j.event("universe", "plate_error", plate=plate, error=str(exc))
-            time.sleep(0.3)
         source = "index"
         try:
-            index_members = set(self.q.plate_stock(ucfg["index"]))
+            if index_error:
+                raise index_error
             symbols = sorted(plate_members & index_members)
             if not symbols:
                 raise BrokerError("index intersection is empty")

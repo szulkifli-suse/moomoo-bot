@@ -46,6 +46,32 @@ def _heartbeat(settings, desk_ref: dict) -> None:
         time.sleep(30)
 
 
+def _wait_for_login(settings) -> None:
+    """Probe OpenD with short-lived connections until it reports a login, so the desk's own
+    connection is made against a logged-in OpenD (an early connection can get stuck)."""
+    import subprocess
+
+    probe = (
+        "import sys\n"
+        "from moomoo import RET_OK, OpenQuoteContext\n"
+        f"q = OpenQuoteContext(host={settings.opend_host!r}, port={settings.opend_port})\n"
+        "ret, data = q.get_global_state()\n"
+        "q.close()\n"
+        "sys.exit(0 if ret == RET_OK and data.get('qot_logined') else 3)\n"
+    )
+    log = logging.getLogger("main")
+    while True:
+        # A separate process with a timeout: a connection made before login can hang.
+        try:
+            r = subprocess.run([sys.executable, "-c", probe], capture_output=True, timeout=60)
+            if r.returncode == 0:
+                return
+        except subprocess.TimeoutExpired:
+            pass
+        log.info("waiting for OpenD login")
+        time.sleep(20)
+
+
 def main() -> None:
     logging.basicConfig(
         level=logging.INFO,
@@ -59,7 +85,7 @@ def main() -> None:
     threading.Thread(target=_heartbeat, args=(settings, desk_ref), daemon=True, name="heartbeat").start()
     internal_api.start(settings, Journal(settings.logs_dir, mode))
     logging.getLogger("main").info("mode=%s; connecting to OpenD", mode)
-    # Connecting blocks until OpenD accepts the connection (after the moomoo login).
+    _wait_for_login(settings)
     desk = Desk(settings)
     desk_ref["desk"] = desk
     desk.run()
