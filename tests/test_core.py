@@ -101,3 +101,14 @@ def test_analyst_reuses_same_day_verdict(tmp_path):
     second, _, _ = a.run([mk("US.A"), mk("US.B"), mk("US.C")])
     assert calls == ["US.A", "US.B", "US.C"]
     assert [c.symbol for c in second] == ["US.A", "US.B", "US.C"]
+
+
+def test_fractional_sizing_three_decimals(tmp_path):
+    j = Journal(tmp_path, "TEST")
+    pf = Portfolio(tmp_path / "p.json", 1000)
+    risk = Risk(CFG["risk"], CFG["executor"], CFG["fees"], True, j)
+    st = {"atr": 8.0, "avg_dollar_volume20": 1e9}
+    pricey = Candidate("US.ROP", 436.31, 3, ["x"], 1.5, st, {"ask_price": 436.40})
+    o = risk.size([pricey], pf, {}, "normal")[0]
+    assert 0 < o.qty < 1 and round(o.qty, 3) == o.qty
+    assert o.qty * o.limit <= 200

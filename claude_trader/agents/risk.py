@@ -75,8 +75,8 @@ class Risk:
             budget = min(target, room, cash - fee)
             qty = budget / limit if self.fractional else math.floor(budget / limit)
             if self.fractional:
-                qty = math.floor(qty * 10000) / 10000
-            if qty <= 0 or (not self.fractional and qty < 1):
+                qty = math.floor(qty * 1000) / 1000  # moomoo accepts 3 decimals for stocks
+            if qty < 0.001 or (not self.fractional and qty < 1):
                 rule = "share_price_over_position_size" if budget > 0 else "no_room_or_cash"
                 self.j.event(self.name, "veto", c.symbol, rule=rule, budget=round(budget, 2), price=limit)
                 continue

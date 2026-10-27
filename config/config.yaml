@@ -5,7 +5,9 @@ account:
   starting_capital_usd: 1000
   security_firm: FUTUMY
   acc_id: 0                 # 0 = first real US-capable account on the login
-  allow_fractional: false   # moomoo OpenAPI fractional US orders are not confirmed for this account
+  # Fractional US shares. Not yet confirmed through moomoo's API for this account: before live
+  # trading, place one small real fractional order; scripts/go-live.sh asks for that.
+  allow_fractional: true
 
 universe:
   index: US..SPX
