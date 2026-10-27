@@ -31,16 +31,16 @@ spec:
       containers:
         - name: opend
           image: docker.io/darkwunan/claude-opend-runtime:__TAG__
-          # stdin without a TTY: Ctrl-C or closing the login terminal only ends kubectl,
-          # never OpenD, and typed input is not echoed into the container log.
+          # The console needs a TTY: without one OpenD treats the typed password as an MD5
+          # hash and the login fails. Detach from it with Ctrl-P Ctrl-Q, never Ctrl-C.
           stdin: true
-          tty: false
+          tty: true
           env:
             - {name: OPEND_VERSION, value: "10.11.7108"}
             - name: MOOMOO_LOGIN_ACCOUNT
               valueFrom: {secretKeyRef: {name: claude-secrets, key: MOOMOO_LOGIN_ACCOUNT, optional: true}}
-            - name: MOOMOO_LOGIN_PWD_MD5
-              valueFrom: {secretKeyRef: {name: claude-secrets, key: MOOMOO_LOGIN_PWD_MD5, optional: true}}
+            # Automatic login (MOOMOO_LOGIN_PWD_MD5) is off: OpenD 10.11 rejects login_pwd_md5
+            # with "MD5 format error" and then fails manual logins too.
           volumeMounts:
             - {name: opend, mountPath: /opend}
           # No readiness probe: OpenD listens on 127.0.0.1 only, and the dashboard must stay
