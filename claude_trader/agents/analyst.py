@@ -13,6 +13,7 @@ from pathlib import Path
 
 import anthropic
 
+from ..util import now_et
 from .scout import Candidate
 
 log = logging.getLogger("analyst")
@@ -64,6 +65,8 @@ class Analyst:
         self.cfg = cfg
         self.j = journal
         self._client: anthropic.Anthropic | None = None
+        self._cache_day: str | None = None
+        self._cache: dict[str, dict] = {}
 
     @property
     def client(self) -> anthropic.Anthropic:
@@ -169,15 +172,36 @@ class Analyst:
         }
         return data
 
+    def _cached(self, symbol: str) -> dict | None:
+        """Today's verdict for a symbol, if the Analyst already reviewed it (hourly scans repeat stocks)."""
+        today = now_et().date().isoformat()
+        if self._cache_day != today:
+            self._cache_day, self._cache = today, {}
+        return self._cache.get(symbol)
+
     def run(self, cands: list[Candidate]):
         cfg = self.cfg
         approved, near_misses = [], []
-        reviewed = cands[: cfg["max_candidates_per_scan"]]
-        for c in cands[cfg["max_candidates_per_scan"]:]:
+        # Reuse today's verdicts; spend the per-scan limit on stocks not reviewed yet today.
+        known = [c for c in cands if self._cached(c.symbol)]
+        fresh = [c for c in cands if not self._cached(c.symbol)]
+        reviewed = known + fresh[: cfg["max_candidates_per_scan"]]
+        for c in fresh[cfg["max_candidates_per_scan"]:]:
             self.j.event(self.name, "skip", c.symbol, rule="over_per_scan_limit")
         for c in reviewed:
+            cached = self._cached(c.symbol)
+            if cached:
+                v = cached
+                self.j.event(self.name, "reuse", c.symbol, decision=v.get("decision"), score=v.get("score"))
+                decision = str(v.get("decision", "PASS")).upper()
+                score = int(v.get("score") or 0)
+                c.notes["analyst"] = {k: v.get(k) for k in ("decision", "score", "red_flags", "reason")}
+                if decision == "BUY" and score >= cfg["min_score"]:
+                    approved.append(c)
+                continue
             try:
                 v = self.review(c)
+                self._cache[c.symbol] = {k: v.get(k) for k in ("decision", "score", "red_flags", "reason")}
             except (anthropic.AnthropicError, RuntimeError) as exc:
                 self.j.event(self.name, "error", c.symbol, error=f"{type(exc).__name__}: {exc}"[:500], action=cfg["on_error"])
                 if cfg["on_error"] == "skip":

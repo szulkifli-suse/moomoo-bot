@@ -19,10 +19,11 @@ def spread_pct(snap: dict) -> float | None:
 class Filter:
     name = "filter"
 
-    def __init__(self, cfg: dict, fees_cfg: dict, journal):
+    def __init__(self, cfg: dict, fees_cfg: dict, journal, allow_fractional: bool = False):
         self.cfg = cfg
         self.fees = fees_cfg
         self.j = journal
+        self.allow_fractional = allow_fractional
 
     def sample_spreads(self, quotes, codes: list[str], snaps: dict) -> dict[str, float | None]:
         samples: dict[str, list[float]] = {c: [] for c in codes}
@@ -85,6 +86,11 @@ class Filter:
 
             if cost_pct > cfg["max_round_trip_cost_pct"]:
                 fails.append(f"fees {cost_pct:.2f}% of position")
+
+            # Whole shares only: a share that costs more than the position size can't be bought,
+            # so don't spend an Analyst review on it.
+            if not self.allow_fractional and c.price > position_value:
+                fails.append(f"share ${c.price:.0f} > position ${position_value:.0f}")
 
             c.unverified = unverified
             c.notes["spread_pct"] = sp

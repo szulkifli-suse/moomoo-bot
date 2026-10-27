@@ -47,7 +47,7 @@ class Desk:
         self.scan_times = [t for t in self.scan_times if t >= first_allowed]
         self.trader: Trader | None = None
         self.scout = Scout(settings["scout"], self.j)
-        self.filter = Filter(settings["filter"], settings["fees"], self.j)
+        self.filter = Filter(settings["filter"], settings["fees"], self.j, settings["account"]["allow_fractional"])
         self.analyst = Analyst(settings["analyst"], self.j)
         self.risk = Risk(settings["risk"], settings["executor"], settings["fees"],
                          settings["account"]["allow_fractional"], self.j)

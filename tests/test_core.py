@@ -87,3 +87,17 @@ def test_backtest_runs():
         r = simulate(data, bench, CFG, **variant)
         assert r["trades"] >= 0 and r["equity_curve"]
         assert not math.isnan(r["final_equity"])
+
+
+def test_analyst_reuses_same_day_verdict(tmp_path):
+    from claude_trader.agents.analyst import Analyst
+    j = Journal(tmp_path, "TEST")
+    a = Analyst(CFG["analyst"], j)
+    calls = []
+    a.review = lambda c: calls.append(c.symbol) or {"decision": "BUY", "score": 7, "reason": "ok", "red_flags": []}
+    st = {"atr": 2.0, "avg_dollar_volume20": 1e9}
+    mk = lambda s: Candidate(s, 50.0, 2, ["x"], 1.4, st, {})
+    first, _, _ = a.run([mk("US.A"), mk("US.B")])
+    second, _, _ = a.run([mk("US.A"), mk("US.B"), mk("US.C")])
+    assert calls == ["US.A", "US.B", "US.C"]
+    assert [c.symbol for c in second] == ["US.A", "US.B", "US.C"]
