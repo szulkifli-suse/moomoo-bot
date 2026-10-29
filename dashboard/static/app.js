@@ -1,4 +1,4 @@
-// Claude Trading Desk dashboard. All text goes through textContent, never innerHTML,
+// Darkloner US.TECH Stock dashboard. All text goes through textContent, never innerHTML,
 // because log data can include news text pulled from the web.
 "use strict";
 
@@ -7,6 +7,7 @@ const REFRESH_MS = 10000;
 let currentTab = "overview";
 let timer = null;
 let tradesCache = [];
+let limits = { max_invested_pct: 80, max_positions: 4 };
 
 function el(tag, attrs = {}, ...kids) {
   const n = document.createElement(tag);
@@ -35,7 +36,17 @@ function showLogin() {
   $("#login").classList.remove("hidden");
   clearInterval(timer);
 }
+async function loadLimits() {
+  try {
+    const c = await api("/api/config");
+    const m1 = /max_invested_pct:\s*([\d.]+)/.exec(c.config_yaml || ""), m2 = /\bmax_positions:\s*(\d+)/.exec(c.config_yaml || "");
+    if (m1) limits.max_invested_pct = Number(m1[1]);
+    if (m2) limits.max_positions = Number(m2[1]);
+  } catch (err) { /* keep defaults */ }
+}
 function showApp() {
+  loadLimits();
+  $("#today").textContent = new Date().toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
   $("#login").classList.add("hidden");
   $("#app").classList.remove("hidden");
   refresh();
@@ -67,8 +78,19 @@ document.querySelectorAll(".tabs button").forEach((b) =>
     document.querySelectorAll(".tab").forEach((t) => t.classList.add("hidden"));
     currentTab = b.dataset.tab;
     $(`#tab-${currentTab}`).classList.remove("hidden");
+    document.querySelector("main").classList.toggle("wide", currentTab !== "overview");
     refresh();
   }));
+document.querySelectorAll("[data-goto]").forEach((b) =>
+  b.addEventListener("click", () => document.querySelector(`.tabs button[data-tab="${b.dataset.goto}"]`).click()));
+$("#more-btn").addEventListener("click", (e) => {
+  e.stopPropagation();
+  const open = $("#more-menu").classList.toggle("hidden") === false;
+  $("#more-btn").setAttribute("aria-expanded", String(open));
+});
+document.addEventListener("click", (e) => {
+  if (!e.target.closest(".dl-more-wrap")) { $("#more-menu").classList.add("hidden"); $("#more-btn").setAttribute("aria-expanded", "false"); }
+});
 
 $("#halt-btn").addEventListener("click", () => $("#halt-dialog").showModal());
 $("#halt-dialog").addEventListener("close", async () => {
@@ -163,22 +185,73 @@ function renderHeader(st) {
   if (st.daily_loss_halt) a.append(el("span", { class: "chip warn", text: "Daily loss limit" }));
   if (!st.opend_logged_in) a.append(el("span", { class: "chip bad", text: "OpenD not logged in" }));
   if (st.stale_seconds > 180) a.append(el("span", { class: "chip warn", text: `State ${Math.round(st.stale_seconds / 60)} min old` }));
-  a.append(el("span", { class: `chip ${st.regime === "weak" ? "warn" : ""}`, text: `Regime: ${st.regime}` }));
+  if (st.regime === "weak") a.append(el("span", { class: "chip warn", text: "Regime: weak" }));
 }
 
+const signed = (v, d = 2) => (v == null || v === "" ? "–" : (Number(v) > 0 ? "+" : Number(v) < 0 ? "−" : "") + Math.abs(Number(v)).toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d }));
+const plain = (v) => (v == null || v === "" ? "–" : Number(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+const TINTS = ["sky", "peach", "mint"];
+
 function renderOverview(st) {
-  if (!st.available) { $("#status-line").textContent = "The bot has not published any state yet."; return; }
-  $("#status-line").textContent =
-    `US market ${st.market_open ? "open" : "closed"} · next scan ${st.next_scan_et ? st.next_scan_et + " ET" : "next trading day"}` +
-    ` · universe ${st.universe_size} · earnings data: ${st.earnings_source || "–"}${st.note ? " · " + st.note : ""}` +
-    ` · updated ${new Date(st.updated_at).toLocaleTimeString()}`;
-  $("#kpis").replaceChildren(
-    kpi("Equity", money(st.equity)), kpi("Cash", money(st.cash)), kpi("Invested", `${num(st.invested_pct, 1)}%`),
-    kpi("Day P&L", money(st.day_pnl), signCls(st.day_pnl)), kpi("Total P&L", money(st.total_pnl), signCls(st.total_pnl)),
-    kpi("Drawdown", `${num(st.drawdown_pct, 1)}%`), kpi("Positions", String(st.positions.length)), kpi("Fees paid", money(st.fees_paid)),
-  );
-  lineChart($("#equity-chart"), st.equity_history, { fmt: (v) => "$" + v.toFixed(0) });
-  lineChart($("#dd-chart"), drawdownSeries(st.equity_history), { height: 110, area: true, zeroTop: true, fmt: (v) => v.toFixed(1) + "%" });
+  if (!st.available) {
+    $("#status-line").textContent = "No state yet";
+    $("#pos-rows").replaceChildren(el("li", { class: "dl-empty", text: "The bot has not published any state yet." }));
+    return;
+  }
+  // hero
+  $("#hero-equity").textContent = plain(st.equity);
+  const start = Number(st.equity) - Number(st.total_pnl);
+  const pct = start ? (Number(st.total_pnl) / start) * 100 : 0;
+  $("#hero-delta").textContent = `${pct > 0 ? "+" : pct < 0 ? "−" : ""}${Math.abs(pct).toFixed(1)}%`;
+  const inv = Number(st.invested_pct) || 0;
+  $("#hero-fill").style.width = `${Math.max(0, Math.min(100, (inv / limits.max_invested_pct) * 100))}%`;
+  $("#hero-bar").setAttribute("aria-label", `Invested ${inv.toFixed(1)}% of equity, cap ${limits.max_invested_pct}%`);
+  $("#hero-invested").textContent = `${inv.toFixed(1)}%`;
+  $("#hero-cap").textContent = `of ${limits.max_invested_pct}% cap · ${st.positions.length} of ${limits.max_positions} slots`;
+  const hp = $("#hero-pending");
+  hp.classList.toggle("hidden", !st.pending.length);
+  hp.textContent = `${st.pending.length} pending order${st.pending.length === 1 ? "" : "s"}`;
+  // positions
+  $("#pos-count").textContent = `· ${signed(st.day_pnl)} today`;
+  $("#pos-rows").replaceChildren(...(st.positions.length ? st.positions.map((p, i) => el("li", { class: "dl-rowi" },
+    el("div", { class: `dl-tile ${TINTS[i % 3]}`, text: sym(p.symbol).slice(0, 5) }),
+    el("div", { class: "dl-main" }, el("div", { class: "dl-title", text: sym(p.symbol) }),
+      el("div", { class: "dl-sub", text: `${num(p.qty, 4).replace(/\.?0+$/, "")} @ ${num(p.entry)} · stop ${num(p.stop)} · day ${p.days_held}${p.partial_taken ? " · half sold" : ""}` })),
+    el("div", { class: `dl-amt ${signCls(p.pnl_usd)}`, text: signed(p.pnl_usd) })))
+    : [el("li", { class: "dl-empty", text: "No open positions." })]));
+  // next scan + P&L
+  $("#scan-label").textContent = st.next_scan_et ? `Next scan · ${st.next_scan_et} ET` : "Next scan · next trading day";
+  $("#scan-universe").textContent = String(st.universe_size ?? "–");
+  const times = st.scan_times_et || [];
+  const done = st.next_scan_et ? Math.max(0, times.indexOf(st.next_scan_et)) : times.length;
+  $("#scan-dots").replaceChildren(...times.map((_, i) => el("i", { class: i < done ? "on" : "" })));
+  $("#scan-dots").setAttribute("aria-label", `${done} of ${times.length} scans done today`);
+  const tot = $("#stat-total");
+  tot.textContent = signed(st.total_pnl); tot.className = `dl-fig ${signCls(st.total_pnl)}`;
+  $("#stat-day").textContent = signed(st.day_pnl);
+  $("#stat-dd").textContent = `${num(st.drawdown_pct, 1)}%`;
+  // funnel bars
+  const f = st.funnel_today || {};
+  const rows = [];
+  if (f.scout) rows.push(["Scanned", f.scout.in]);
+  for (const k of ["scout", "filter", "analyst", "risk", "executor"]) if (f[k]) rows.push([k[0].toUpperCase() + k.slice(1), f[k].out]);
+  const max = Math.max(1, ...rows.map((r) => Number(r[1]) || 0));
+  const bars = [];
+  rows.forEach(([name, n], i) => {
+    const b = el("span", { class: `dl-bar ${i === 0 ? "lead" : ""}` });
+    b.style.width = `${Math.max(4, ((Number(n) || 0) / max) * 100)}%`;
+    bars.push(el("span", { text: name }), b, el("span", { class: "dl-val", text: String(n ?? 0) }));
+  });
+  $("#funnel-bars").replaceChildren(...(bars.length ? bars : [el("span", { class: "dl-empty", text: "No scans yet today." })]));
+  const top = (st.top_rejections_today || [])[0];
+  $("#funnel-note").textContent = top ? `Top reject: ${top[0]}` : "";
+  // equity
+  $("#status-line").textContent = `updated ${new Date(st.updated_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+  lineChart($("#equity-chart"), st.equity_history, { height: 160, fmt: (v) => "$" + v.toFixed(0) });
+  lineChart($("#dd-chart"), drawdownSeries(st.equity_history), { height: 96, area: true, zeroTop: true, fmt: (v) => v.toFixed(1) + "%" });
+  // action bar
+  $("#bar-regime").textContent = `Regime ${st.regime || "–"}`;
+  $("#bar-market").textContent = `· US market ${st.market_open ? "open" : "closed"}`;
 }
 
 function renderPositions(st) {

@@ -2,15 +2,19 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Claude Trading Desk</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#eef0f3" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0b0f14" media="(prefers-color-scheme: dark)">
+  <title>Darkloner US.TECH Stock</title>
+  <link rel="preload" href="/static/fonts/plus-jakarta-sans-latin-800-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/static/style.css">
   <script src="/static/app.js" defer></script>
 </head>
 <body>
   <section id="login" class="login hidden">
     <form id="login-form" class="card">
-      <h1>Claude Trading Desk</h1>
+      <h1>Darkloner US.TECH Stock</h1>
+      <span class="wordmark sign">i.am.a.loner</span>
       <label for="pw">Password</label>
       <input id="pw" type="password" autocomplete="current-password" required>
       <button type="submit">Sign in</button>
@@ -19,32 +23,67 @@
   </section>
 
   <div id="app" class="hidden">
-    <header class="top">
-      <div class="brand">Claude Trading Desk</div>
-      <span id="mode-badge" class="badge">…</span>
-      <span id="alerts" class="alerts"></span>
-      <div class="spacer"></div>
-      <button id="halt-btn" class="danger">Halt</button>
-      <button id="logout-btn" class="ghost">Sign out</button>
-    </header>
-    <nav class="tabs" role="tablist">
-      <button data-tab="overview" class="active">Overview</button>
-      <button data-tab="positions">Positions</button>
-      <button data-tab="trades">Trades</button>
-      <button data-tab="funnel">Funnel</button>
-      <button data-tab="activity">Activity</button>
-      <button data-tab="backtest">Backtest</button>
-      <button data-tab="config">Config</button>
-    </nav>
+    <div class="dl-shell">
+      <header class="dl-header">
+        <div class="dl-avatar" aria-hidden="true">DL</div>
+        <div><span id="today" class="dl-date">…</span><span class="dl-sub">Darkloner US.TECH Stock</span></div>
+        <div class="spacer"></div>
+        <span id="mode-badge" class="badge">…</span>
+      </header>
+      <div id="alerts" class="alerts"></div>
+      <nav class="tabs" role="tablist">
+        <button data-tab="overview" class="active">Overview</button>
+        <button data-tab="positions">Positions</button>
+        <button data-tab="trades">Trades</button>
+        <button data-tab="funnel">Funnel</button>
+        <button data-tab="activity">Activity</button>
+        <button data-tab="backtest">Backtest</button>
+        <button data-tab="config">Config</button>
+      </nav>
+    </div>
     <main>
       <section id="tab-overview" class="tab">
-        <div id="status-line" class="muted"></div>
-        <div id="kpis" class="kpis"></div>
-        <div class="card">
-          <h2>Equity</h2>
-          <div id="equity-chart" class="chart"></div>
-          <h3>Drawdown</h3>
-          <div id="dd-chart" class="chart small"></div>
+        <div class="dl-app">
+          <div class="dl-col">
+            <section class="dl-hero">
+              <div class="dl-hero-top"><span class="dl-label">Equity</span><span id="hero-pending" class="dl-hero-chip hidden"></span></div>
+              <div class="dl-amount"><span class="dl-unit">US$</span><span id="hero-equity" class="dl-big">–</span><span id="hero-delta" class="dl-delta"></span></div>
+              <div id="hero-bar" class="dl-progress" role="img" aria-label="Invested share of equity"><span id="hero-fill"></span></div>
+              <div class="dl-foot"><span>Invested <b id="hero-invested">–</b></span><span id="hero-cap"></span></div>
+            </section>
+            <section class="dl-sheet">
+              <div class="dl-sheet-head"><h2>Positions <span id="pos-count"></span></h2><button class="dl-link" data-goto="positions">See all</button></div>
+              <ul id="pos-rows" class="dl-rows"></ul>
+            </section>
+          </div>
+          <div class="dl-col">
+            <div class="dl-split">
+              <div class="dl-stat"><div id="scan-label" class="dl-label">Next scan</div><div id="scan-universe" class="dl-fig">–</div>
+                <div class="dl-note">symbols <span id="scan-dots" class="dl-dots" role="img"></span></div></div>
+              <div class="dl-stat"><div class="dl-label">Total P&amp;L</div><div id="stat-total" class="dl-fig">–</div>
+                <div class="dl-chips"><span class="dl-tchip mint">Today<b id="stat-day">–</b></span><span class="dl-tchip sky">Drawdown<b id="stat-dd">–</b></span></div></div>
+            </div>
+            <section class="dl-sheet">
+              <div class="dl-sheet-head"><h2>Funnel today</h2><span id="funnel-note" class="dl-meta-r"></span></div>
+              <div id="funnel-bars" class="dl-bars"></div>
+            </section>
+            <section class="dl-sheet">
+              <div class="dl-sheet-head"><h2>Equity</h2><span id="status-line" class="dl-meta-r"></span></div>
+              <div id="equity-chart" class="chart big"></div>
+              <div id="dd-chart" class="chart small"></div>
+            </section>
+          </div>
+          <div class="dl-actionbar">
+            <div class="dl-status"><span id="bar-regime">…</span> <em id="bar-market"></em></div>
+            <button id="halt-btn" class="dl-round danger" aria-label="Halt the bot" title="Halt the bot"><svg viewBox="0 0 24 24" class="dl-icon" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2"/></svg></button>
+            <div class="dl-more-wrap">
+              <button id="more-btn" class="dl-round" aria-label="More" aria-expanded="false" aria-controls="more-menu"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="6" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="18" cy="12" r="1.8"/></svg></button>
+              <div id="more-menu" class="dl-menu hidden">
+                <a href="/api/trades.csv" download>Download trades CSV</a>
+                <button id="logout-btn">Sign out</button>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
       <section id="tab-positions" class="tab hidden">
